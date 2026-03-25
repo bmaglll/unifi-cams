@@ -1,0 +1,36 @@
+<svg version="1.2" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1522 1520" width="1522" height="1520">
+	<title>Identity</title>
+	<defs>
+		<radialGradient id="g1" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="matrix(0,1520,-1520,0,761,0)">
+			<stop offset="0" stop-color="#006fff"/>
+			<stop offset="1" stop-color="#003c9e"/>
+		</radialGradient>
+		<linearGradient id="g2" x2="1" gradientUnits="userSpaceOnUse" gradientTransform="matrix(520.692,-665.918,665.936,520.706,632.082,1575.293)">
+			<stop offset="0" stop-color="#c2c4ce"/>
+			<stop offset=".397" stop-color="#d6d9e2"/>
+			<stop offset="1" stop-color="#ffffff"/>
+		</linearGradient>
+		<linearGradient id="g3" x2="1" gradientUnits="userSpaceOnUse" gradientTransform="matrix(520.692,-665.918,904.488,707.233,632.082,1575.293)">
+			<stop offset="0" stop-color="#c2c4ce"/>
+			<stop offset=".397" stop-color="#d6d9e2"/>
+			<stop offset="1" stop-color="#ffffff"/>
+		</linearGradient>
+		<linearGradient id="g4" x2="1" gradientUnits="userSpaceOnUse" gradientTransform="matrix(520.692,-665.918,1165.389,911.236,632.082,1575.293)">
+			<stop offset="0" stop-color="#c2c4ce"/>
+			<stop offset=".397" stop-color="#d6d9e2"/>
+			<stop offset="1" stop-color="#ffffff"/>
+		</linearGradient>
+	</defs>
+	<style>
+		.s0 { fill: url(#g1) } 
+		.s1 { fill: url(#g2) } 
+		.s2 { fill: url(#g3) } 
+		.s3 { fill: url(#g4) } 
+	</style>
+	<path class="s0" d="m0.8 475c0-166.3 0-249.4 32.4-312.9 28.5-55.9 73.9-101.3 129.8-129.7 63.5-32.4 146.6-32.4 312.9-32.4h570.2c166.3 0 249.4 0 312.9 32.4 55.9 28.4 101.3 73.8 129.8 129.7 32.4 63.5 32.4 146.6 32.4 312.9v570c0 166.3 0 249.4-32.4 312.9-28.5 55.9-73.9 101.3-129.8 129.7-63.5 32.4-146.6 32.4-312.9 32.4h-570.2c-166.3 0-249.4 0-312.9-32.4-55.9-28.4-101.3-73.8-129.8-129.7-32.4-63.5-32.4-146.6-32.4-312.9z"/>
+	<g>
+		<path class="s1" d="m1117.3 397.8h-47.5v47.5h47.5z"/>
+		<path class="s2" d="m951.1 730.4v-95.1h95v95h95v30.1c0 34.8-3 76-9.8 108.4-3.8 18.1-9.6 36.1-16.3 53.4-7 17.6-15 34.6-23.7 49.7-11.4 19.8-24.5 38.9-39.8 56.7l-0.8 1-1.3 1.5c-3.7 4.3-7.3 8.6-11.3 12.7-4.6 5-9.4 9.7-14.3 14.4-60.8 58.5-140 95.1-222.8 103.5-10 1-30 2-40 2-10 0-30-1-40-2-82.8-8.4-162-45-222.8-103.5-4.9-4.7-9.7-9.4-14.3-14.4-4.2-4.3-8-8.7-11.8-13.2v-0.1l-1.6-1.9c-15.3-17.8-28.4-36.9-39.8-56.7-8.7-15.2-16.7-32.1-23.7-49.7-6.7-17.3-12.5-35.3-16.3-53.4-6.8-32.4-9.8-73.6-9.8-108.4v-356.6h190v326.6c0 0 0 25.1 0.3 33.3l0.1 1.9c0.4 10.6 0.8 21 1.9 31.3 3.1 29.3 9.6 57.2 23 80.7 3.8 6.8 7.8 13.4 12.5 19.7 28.5 38.1 72 66.7 126.3 74.6 6.4 1 19.5 1.8 26 1.8 6.5 0 19.6-0.8 26-1.8 54.3-7.9 97.8-36.5 126.3-74.6 4.8-6.3 8.7-12.9 12.5-19.7 13.4-23.5 19.9-51.4 23-80.7 1.1-10.3 1.5-20.7 1.9-31.4l0.1-1.8c0.3-8.2 0.3-33.3 0.3-33.3z"/>
+		<path class="s3" d="m974.8 469.1h71.3v71.2h95v95h-95v-95h-71.3z"/>
+	</g>
+</svg>
