@@ -56,10 +56,10 @@ When motion is detected, you'll get a desktop notification with a thumbnail. Cli
 
 ### Standalone PIP stream
 
-To manually open a camera stream in a PIP window:
+The notification script launches mpv streams automatically when you click **View Stream**. This standalone script is for manually opening a camera stream without waiting for a motion event:
 
 ```sh
-./lucas-cam.sh 'rtsps://192.168.1.1:7441/your-stream-token?enableSrtp'
+./open-pip-cam.sh 'rtsps://192.168.1.1:7441/your-stream-token?enableSrtp'
 ```
 
 ## Notification Sounds
