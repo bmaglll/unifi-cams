@@ -24,13 +24,10 @@ Gtk.Settings.get_default().set_property("gtk-application-prefer-dark-theme", Tru
 
 
 def load_cameras():
-    """Load UNIFI_CAMERAS from .env file."""
-    env_path = SCRIPT_DIR / ".env"
-    with open(env_path) as f:
-        for line in f:
-            line = line.strip()
-            if line.startswith("UNIFI_CAMERAS="):
-                return json.loads(line[len("UNIFI_CAMERAS="):])
+    """Load cameras from cameras.json."""
+    cam_path = SCRIPT_DIR / "cameras.json"
+    with open(cam_path) as f:
+        return json.load(f)
     return {}
 
 

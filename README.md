@@ -19,7 +19,7 @@ Actual numbers vary by stream resolution, codec, and hardware decode availabilit
 
 ## Screenshots
 
-<!-- TODO: add screenshot -->
+![UniFi Cams Dashboard](assets/screenshot_for_readme.png)
 
 ## Setup
 
@@ -68,14 +68,24 @@ On NixOS, the dashboard shell script handles GTK4/GStreamer deps via `nix-shell`
    |---|---|---|
    | `UNIFI_TOKEN` | Bearer token matching your Protect webhook config | *(required)* |
    | `UNIFI_HOST` | IP of your Protect console (Cloud Key, UNVR, UDM, etc.) | *(required)* |
-   | `UNIFI_CAMERAS` | JSON map of MAC addresses to `{"name": "...", "stream": "rtsps://..."}` | *(required)* |
    | `UNIFI_LISTEN_PORT` | Port for the webhook listener | `9999` |
    | `UNIFI_COOLDOWN` | Seconds between repeat notifications per camera | `30` |
    | `UNIFI_SNOOZE_MINS` | Minutes to snooze a camera from the notification button | `30` |
    | `UNIFI_SOUND` | Path to a custom notification sound | `assets/notification_sound.mp3` |
    | `UNIFI_SOUND_ENABLED` | Set to `0`, `false`, or `no` to disable notification sounds | `1` (enabled) |
 
-3. Find your camera info in the Protect UI:
+3. Add your cameras to `cameras.json` (keys are MAC addresses, uppercase, no colons):
+
+   ```json
+   {
+     "AABBCCDDEEFF": {
+       "name": "Front Door",
+       "stream": "rtsps://192.168.1.1:7441/your-stream-token?enableSrtp"
+     }
+   }
+   ```
+
+   Find camera info in the Protect UI:
    - **MAC address**: Camera → Settings → General (format: `AABBCCDDEEFF`, uppercase, no colons)
    - **RTSP stream URL**: Camera → Settings → Advanced → RTSP
 

@@ -39,11 +39,9 @@ python3 unifi-notify.py
 
 ## Configuration
 
-All config is in `.env` (not committed). Key variables:
-- `UNIFI_TOKEN` — Bearer token matching the UniFi Protect webhook config
-- `UNIFI_CAMERAS` — JSON map of MAC addresses to `{"name": "...", "stream": "rtsps://..."}`
-- `UNIFI_COOLDOWN` — Seconds between repeat notifications per camera (default 30)
-- `UNIFI_SOUND` — Custom notification sound path (defaults to `assets/notification_sound.mp3`)
+Config is split between `.env` and `cameras.json` (neither committed):
+- `.env` — `UNIFI_TOKEN`, `UNIFI_COOLDOWN`, `UNIFI_SNOOZE_MINS`, `UNIFI_SOUND`, etc.
+- `cameras.json` — MAC address → `{"name": "...", "stream": "rtsps://..."}` map (read directly by both scripts)
 
 ## Conventions
 
