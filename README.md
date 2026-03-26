@@ -7,7 +7,7 @@ Live camera dashboard and motion notification system for UniFi Protect on Linux.
 ## Features
 
 - **Camera Dashboard** — GTK4 + GStreamer GUI with GPU-accelerated live RTSPS streams. Toggle cameras on/off, launch PIP windows, all from one panel.
-- **Motion Notifications** — Webhook server receives UniFi Protect motion events and sends desktop notifications with camera thumbnails. Click to open a live PIP stream.
+- **Motion Notifications** — Webhook server receives UniFi Protect events and sends desktop notifications with camera thumbnails. Click to open a live PIP stream. Supports any event type available in the Protect controller (motion, person, vehicle, package, etc.).
 - **PIP Streams** — Floating picture-in-picture windows via mpv, launchable from the dashboard or notifications.
 
 ## Screenshots
