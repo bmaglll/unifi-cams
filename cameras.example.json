@@ -1,0 +1,10 @@
+{
+  "AABBCCDDEEFF": {
+    "name": "Front Door",
+    "stream": "rtsps://192.168.1.1:7441/your-stream-token?enableSrtp"
+  },
+  "112233445566": {
+    "name": "Backyard",
+    "stream": "rtsps://192.168.1.1:7441/your-stream-token?enableSrtp"
+  }
+}

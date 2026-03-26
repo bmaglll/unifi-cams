@@ -10,13 +10,6 @@ Live camera dashboard and motion notification system for UniFi Protect on Linux.
 - **Motion Notifications** — Webhook server receives UniFi Protect motion events and sends desktop notifications with camera thumbnails. Click to open a live PIP stream.
 - **PIP Streams** — Floating picture-in-picture windows via mpv, launchable from the dashboard or notifications.
 
-## Resource Usage
-
-- **Dashboard** (per active stream): ~150–250 MB RAM, ~5–15% CPU per core (software decode). Significantly less with hardware decode (VA-API / NVDEC).
-- **Notification listener**: ~20–30 MB RAM, negligible CPU (idle HTTP server, spikes briefly on events).
-
-Actual numbers vary by stream resolution, codec, and hardware decode availability.
-
 ## Screenshots
 
 ![UniFi Cams Dashboard](assets/screenshot_for_readme.png)
@@ -56,10 +49,11 @@ On NixOS, the dashboard shell script handles GTK4/GStreamer deps via `nix-shell`
 
 ### Configuration
 
-1. Copy and edit the env file:
+1. Copy the example config files:
 
    ```sh
    cp .env.example .env
+   cp cameras.example.json cameras.json
    ```
 
 2. Fill in your `.env`:
