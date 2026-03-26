@@ -19,8 +19,21 @@ SOUND = os.environ.get("UNIFI_SOUND", os.path.join(_SCRIPT_DIR, "assets", "notif
 SOUND_ENABLED = os.environ.get("UNIFI_SOUND_ENABLED", "1") not in ("0", "false", "no")
 SNOOZE_MINS = int(os.environ.get("UNIFI_SNOOZE_MINS", "30"))
 
+def _load_cameras() -> dict[str, dict]:
+    """Load UNIFI_CAMERAS from .env file directly (JSON doesn't survive bash source)."""
+    env_path = os.path.join(_SCRIPT_DIR, ".env")
+    try:
+        with open(env_path) as f:
+            for line in f:
+                line = line.strip()
+                if line.startswith("UNIFI_CAMERAS="):
+                    return json.loads(line[len("UNIFI_CAMERAS="):])
+    except FileNotFoundError:
+        pass
+    return {}
+
 # MAC address -> {"name": "...", "stream": "rtsps://..."}
-CAMERAS: dict[str, dict] = json.loads(os.environ.get("UNIFI_CAMERAS", "{}"))
+CAMERAS: dict[str, dict] = _load_cameras()
 
 # Per-device cooldown tracking: device_mac -> last notification timestamp
 _last_notify: dict[str, float] = {}

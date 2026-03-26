@@ -38,7 +38,21 @@ On Arch:
 sudo pacman -S mpv ffmpeg libnotify
 ```
 
+On Ubuntu / Debian:
+
+```sh
+sudo apt install mpv ffmpeg libnotify-bin
+```
+
+On Fedora:
+
+```sh
+sudo dnf install mpv ffmpeg libnotify
+```
+
 On NixOS, the dashboard shell script handles GTK4/GStreamer deps via `nix-shell`. mpv and libnotify are likely already available if you run Hyprland/Sway.
+
+> **Note:** The notification listener requires a Linux desktop with a notification daemon (SwayNC, mako, dunst, etc.). The dashboard requires a Wayland or X11 session with GTK4. macOS and Windows are not supported.
 
 ### Configuration
 
