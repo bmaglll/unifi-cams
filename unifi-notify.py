@@ -3,14 +3,17 @@
 and auto-launches mpv PIP streams for cameras with motion."""
 
 import base64
+import html
 import json
 import os
+import re
 import subprocess
 import tempfile
 import threading
 import time
 from http.server import HTTPServer, BaseHTTPRequestHandler
 
+HOST = os.environ.get("UNIFI_LISTEN_HOST", "0.0.0.0")
 PORT = int(os.environ.get("UNIFI_LISTEN_PORT", "9999"))
 COOLDOWN = int(os.environ.get("UNIFI_COOLDOWN", "30"))
 TOKEN = os.environ.get("UNIFI_TOKEN", "")
@@ -48,6 +51,11 @@ MPV_CMD = [
 ]
 
 
+def _sanitize_mac(mac: str) -> str:
+    """Strip anything that isn't a hex character to prevent path traversal."""
+    return re.sub(r"[^0-9A-Fa-f]", "", mac) or "unknown"
+
+
 def save_thumbnail(data_uri: str, mac: str = "") -> str | None:
     """Decode base64 thumbnail from payload and save per-camera cache for dashboard."""
     try:
@@ -56,7 +64,8 @@ def save_thumbnail(data_uri: str, mac: str = "") -> str | None:
         img_bytes = base64.b64decode(b64data)
         cache_dir = os.path.join(tempfile.gettempdir(), "unifi-cams")
         os.makedirs(cache_dir, exist_ok=True)
-        cached = os.path.join(cache_dir, f"{mac}.jpg") if mac else os.path.join(cache_dir, "unknown.jpg")
+        safe_mac = _sanitize_mac(mac) if mac else "unknown"
+        cached = os.path.join(cache_dir, f"{safe_mac}.jpg")
         with open(cached, "wb") as f:
             f.write(img_bytes)
         return cached
@@ -172,7 +181,7 @@ class WebhookHandler(BaseHTTPRequestHandler):
             if timestamp_ms:
                 ts = f"\n{time.strftime('%I:%M:%S %p', time.localtime(timestamp_ms / 1000))}"
 
-            description = event_type.replace("_", " ").title()
+            description = html.escape(event_type.replace("_", " ").title())
 
             body = f"{description}{ts}"
             if thumb_path:
@@ -205,8 +214,8 @@ class WebhookHandler(BaseHTTPRequestHandler):
 
 
 def main():
-    server = HTTPServer(("0.0.0.0", PORT), WebhookHandler)
-    print(f"[unifi-notify] Listening on 0.0.0.0:{PORT}", flush=True)
+    server = HTTPServer((HOST, PORT), WebhookHandler)
+    print(f"[unifi-notify] Listening on {HOST}:{PORT}", flush=True)
     print(f"[unifi-notify] Cameras: {CAMERAS}", flush=True)
     try:
         server.serve_forever()

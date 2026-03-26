@@ -1,6 +1,6 @@
 # UniFi Cams
 
-Live camera dashboard and motion notification system for UniFi Protect on Linux.
+Live camera dashboard and notification server for UniFi Protect on Linux.
 
 ![GTK4](https://img.shields.io/badge/GTK4-GStreamer-blue) ![Python](https://img.shields.io/badge/Python-3.10+-green) ![Linux](https://img.shields.io/badge/Linux-Desktop-orange)
 
@@ -62,6 +62,7 @@ On NixOS, the dashboard shell script handles GTK4/GStreamer deps via `nix-shell`
    |---|---|---|
    | `UNIFI_TOKEN` | Bearer token matching your Protect webhook config | *(required)* |
    | `UNIFI_HOST` | IP of your Protect console (Cloud Key, UNVR, UDM, etc.) | *(required)* |
+   | `UNIFI_LISTEN_HOST` | Bind address for the webhook listener (`127.0.0.1` for local only) | `0.0.0.0` |
    | `UNIFI_LISTEN_PORT` | Port for the webhook listener | `9999` |
    | `UNIFI_COOLDOWN` | Seconds between repeat notifications per camera | `30` |
    | `UNIFI_SNOOZE_MINS` | Minutes to snooze a camera from the notification button | `30` |
