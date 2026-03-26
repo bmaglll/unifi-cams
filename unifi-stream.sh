@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# open-pip-cam.sh — Launch a camera stream in a floating PIP window via mpv
+# unifi-stream.sh — Launch a camera stream in a floating PIP window via mpv
 # Uses the "Picture-in-Picture" title so Hyprland's existing window rules apply.
 
 if [[ -z "$1" ]]; then
-  echo "Usage: open-pip-cam.sh <stream-url>"
-  echo "Example: open-pip-cam.sh 'rtsps://192.168.1.1:7441/token?enableSrtp'"
+  echo "Usage: unifi-stream.sh <stream-url>"
+  echo "Example: unifi-stream.sh 'rtsps://192.168.1.1:7441/token?enableSrtp'"
   exit 1
 fi
 
