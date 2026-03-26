@@ -22,7 +22,7 @@ Live camera dashboard and motion notification system for UniFi Protect on Linux.
 - **mpv** — PIP streams and notification sounds
 - **ffmpeg** — RTSPS stream bridging for the dashboard
 - **libnotify** (`notify-send`) — desktop notifications
-- **GTK4 + PyGObject + GStreamer** — dashboard GUI (provided automatically by `unifi-dashboard.sh` on NixOS)
+- **GTK4 + PyGObject + GStreamer** — dashboard GUI 
 - A notification daemon (**SwayNC**, **mako**, **dunst**, etc.)
 
 On Arch:
