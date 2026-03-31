@@ -68,6 +68,7 @@ On NixOS, the dashboard shell script handles GTK4/GStreamer deps via `nix-shell`
    | `UNIFI_SNOOZE_MINS` | Minutes to snooze a camera from the notification button | `30` |
    | `UNIFI_SOUND` | Path to a custom notification sound | `assets/notification_sound.mp3` |
    | `UNIFI_SOUND_ENABLED` | Set to `0`, `false`, or `no` to disable notification sounds | `1` (enabled) |
+   | `UNIFI_PIP_MUTED` | Set to `1`, `true`, or `yes` to start PIP streams muted | `0` (unmuted) |
 
 3. Add your cameras to `cameras.json` (keys are MAC addresses, uppercase, no colons):
 

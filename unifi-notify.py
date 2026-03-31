@@ -20,6 +20,7 @@ TOKEN = os.environ.get("UNIFI_TOKEN", "")
 _SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 SOUND = os.environ.get("UNIFI_SOUND", os.path.join(_SCRIPT_DIR, "assets", "notification_sound.mp3"))
 SOUND_ENABLED = os.environ.get("UNIFI_SOUND_ENABLED", "1") not in ("0", "false", "no")
+PIP_MUTED = os.environ.get("UNIFI_PIP_MUTED", "0") not in ("0", "false", "no")
 SNOOZE_MINS = int(os.environ.get("UNIFI_SNOOZE_MINS", "30"))
 
 # MAC address -> {"name": "...", "stream": "rtsps://..."}
@@ -48,7 +49,7 @@ MPV_CMD = [
     "mpv",
     "--profile=low-latency",
     "--demuxer-lavf-o=reconnect=1,reconnect_streamed=1,reconnect_delay_max=5",
-]
+] + (["--mute=yes"] if PIP_MUTED else [])
 
 
 def _sanitize_mac(mac: str) -> str:

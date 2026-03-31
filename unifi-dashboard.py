@@ -35,7 +35,7 @@ class CameraStream:
     """Manages a GStreamer pipeline fed by ffmpeg for one camera.
 
     ffmpeg handles the RTSPS/TLS/SRTP connection (which GStreamer's rtspsrc
-    can't do with UniFi's self-signed certs). It outputs a matroska container
+    can't do with UniFi's self-signed certs). It outputs an mpegts container
     to stdout, which GStreamer demuxes, decodes, and renders via gtk4paintablesink.
     """
 
@@ -44,22 +44,34 @@ class CameraStream:
         self.ffmpeg_proc = None
 
         # Build pipeline: fdsrc → decodebin → videoconvert → gtk4paintablesink
+        #                                   → audioconvert → volume → autoaudiosink
         self.pipeline = Gst.Pipeline.new()
 
         self.fdsrc = Gst.ElementFactory.make("fdsrc")
-        self.fdsrc.set_property("blocksize", 65536)
+        self.fdsrc.set_property("blocksize", 4096)
         self.decodebin = Gst.ElementFactory.make("decodebin")
         self.videoconvert = Gst.ElementFactory.make("videoconvert")
         self.sink = Gst.ElementFactory.make("gtk4paintablesink")
+        self.sink.set_property("sync", False)
 
-        for el in (self.fdsrc, self.decodebin, self.videoconvert, self.sink):
+        self.audioconvert = Gst.ElementFactory.make("audioconvert")
+        self.volume = Gst.ElementFactory.make("volume")
+        self.volume.set_property("volume", 0.0)
+        self.audiosink = Gst.ElementFactory.make("autoaudiosink")
+        self.audiosink.set_property("sync", False)
+
+        for el in (self.fdsrc, self.decodebin, self.videoconvert, self.sink,
+                   self.audioconvert, self.volume, self.audiosink):
             self.pipeline.add(el)
 
         self.fdsrc.link(self.decodebin)
         self.videoconvert.link(self.sink)
+        self.audioconvert.link(self.volume)
+        self.volume.link(self.audiosink)
 
         # decodebin creates pads dynamically — link video pads to videoconvert
         self.decodebin.connect("pad-added", self._on_pad_added)
+        self.decodebin.connect("element-added", self._on_element_added)
 
         # Create GTK Picture widget from the paintable
         paintable = self.sink.get_property("paintable")
@@ -87,20 +99,34 @@ class CameraStream:
             sink_pad = self.videoconvert.get_static_pad("sink")
             if not sink_pad.is_linked():
                 pad.link(sink_pad)
+        elif name.startswith("audio/"):
+            sink_pad = self.audioconvert.get_static_pad("sink")
+            if not sink_pad.is_linked():
+                pad.link(sink_pad)
+
+    def _on_element_added(self, decodebin, element):
+        """Minimize buffering on internal queues created by decodebin."""
+        factory = element.get_factory()
+        if factory and factory.get_name() in ("queue", "queue2"):
+            element.set_property("max-size-buffers", 1)
+            element.set_property("max-size-time", 0)
+            element.set_property("max-size-bytes", 0)
 
     def play(self):
-        # Launch ffmpeg: reads RTSPS, outputs matroska to stdout (no re-encode)
+        # Launch ffmpeg: reads RTSPS, outputs mpegts to stdout (no re-encode)
         self.ffmpeg_proc = subprocess.Popen(
             [
                 "ffmpeg", "-loglevel", "error",
                 "-fflags", "nobuffer",
                 "-flags", "low_delay",
+                "-probesize", "32768",
+                "-analyzeduration", "0",
                 "-rtsp_transport", "tcp",
                 "-i", self.stream_url,
-                "-c:v", "copy", "-an",
-                "-f", "matroska",
-                "-flush_packets", "1",
-                "-cluster_time_limit", "100",
+                "-c:v", "copy", "-c:a", "copy",
+                "-f", "mpegts",
+                "-muxdelay", "0",
+                "-muxpreload", "0",
                 "pipe:1",
             ],
             stdin=subprocess.DEVNULL,
@@ -143,6 +169,7 @@ class CamDashboard(Gtk.ApplicationWindow):
 
         self.cameras = cameras  # {mac: {"name": ..., "stream": ...}}
         self.streams = {}  # mac -> CameraStream
+        self.sliders = {}  # mac -> Gtk.Scale
 
         # Main vertical layout
         vbox = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
@@ -183,6 +210,18 @@ class CamDashboard(Gtk.ApplicationWindow):
             label.set_hexpand(True)
             hbox.append(label)
 
+            # Volume slider (muted + insensitive until stream is active)
+            slider = Gtk.Scale.new_with_range(
+                Gtk.Orientation.HORIZONTAL, 0.0, 1.0, 0.05
+            )
+            slider.set_value(0.0)
+            slider.set_draw_value(False)
+            slider.set_size_request(120, -1)
+            slider.set_sensitive(False)
+            slider.connect("value-changed", self._on_volume_changed, mac)
+            self.sliders[mac] = slider
+            hbox.append(slider)
+
             # PIP button
             pip_btn = Gtk.Button(label="PIP")
             pip_btn.connect("clicked", self._on_pip_clicked, info["stream"])
@@ -214,6 +253,7 @@ class CamDashboard(Gtk.ApplicationWindow):
         self.streams[mac] = stream
         self.stream_area.append(stream.widget)
         stream.play()
+        self.sliders[mac].set_sensitive(True)
 
     def _stop_stream(self, mac):
         stream = self.streams.pop(mac, None)
@@ -221,6 +261,13 @@ class CamDashboard(Gtk.ApplicationWindow):
             return
         stream.stop()
         self.stream_area.remove(stream.widget)
+        self.sliders[mac].set_value(0.0)
+        self.sliders[mac].set_sensitive(False)
+
+    def _on_volume_changed(self, slider, mac):
+        stream = self.streams.get(mac)
+        if stream:
+            stream.volume.set_property("volume", slider.get_value())
 
     def _on_pip_clicked(self, button, stream_url):
         subprocess.Popen(

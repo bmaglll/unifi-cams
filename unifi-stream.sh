@@ -8,8 +8,14 @@ if [[ -z "$1" ]]; then
   exit 1
 fi
 
+MUTE_FLAG=""
+case "${UNIFI_PIP_MUTED:-0}" in
+  1|true|yes) MUTE_FLAG="--mute=yes" ;;
+esac
+
 exec mpv \
   --title="Picture-in-Picture" \
   --profile=low-latency \
   --demuxer-lavf-o=reconnect=1,reconnect_streamed=1,reconnect_delay_max=5 \
+  $MUTE_FLAG \
   "$1"
