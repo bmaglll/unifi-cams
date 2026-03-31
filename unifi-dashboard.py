@@ -7,6 +7,8 @@ lists cameras with checkboxes (toggle stream) and PIP buttons (launch mpv).
 """
 
 import json
+import os
+import signal
 import subprocess
 import sys
 from pathlib import Path
@@ -18,6 +20,89 @@ gi.require_version("Gst", "1.0")
 from gi.repository import Gtk, Gdk, Gst, GLib
 
 SCRIPT_DIR = Path(__file__).resolve().parent
+ENV_PATH = SCRIPT_DIR / ".env"
+
+
+def load_dotenv(path):
+    """Parse .env file → (dict of KEY=VALUE, raw lines list)."""
+    settings = {}
+    lines = []
+    if path.exists():
+        text = path.read_text()
+        lines = text.splitlines(keepends=True)
+        for line in lines:
+            stripped = line.strip()
+            if not stripped or stripped.startswith("#"):
+                continue
+            if "=" not in stripped:
+                continue
+            key, _, value = stripped.partition("=")
+            key = key.strip()
+            value = value.strip()
+            # Strip surrounding quotes
+            if len(value) >= 2 and value[0] == value[-1] and value[0] in ('"', "'"):
+                value = value[1:-1]
+            settings[key] = value
+    return settings, lines
+
+
+def save_dotenv(path, settings, original_lines):
+    """Write settings back to .env, preserving comments and blank lines."""
+    written_keys = set()
+    out = []
+    for line in original_lines:
+        stripped = line.strip()
+        if stripped and not stripped.startswith("#") and "=" in stripped:
+            key, _, _ = stripped.partition("=")
+            key = key.strip()
+            if key in settings:
+                out.append(f"{key}={settings[key]}\n")
+                written_keys.add(key)
+                continue
+        out.append(line if line.endswith("\n") else line + "\n")
+    # Append any new keys not already in the file
+    for key, value in settings.items():
+        if key not in written_keys:
+            out.append(f"{key}={value}\n")
+    path.write_text("".join(out))
+
+
+def _restart_notify():
+    """Kill any running unifi-notify.py and respawn with current .env values."""
+    result = subprocess.run(
+        ["pgrep", "-f", "python3.*unifi-notify"], capture_output=True, text=True
+    )
+    for pid in result.stdout.strip().splitlines():
+        try:
+            os.kill(int(pid), signal.SIGTERM)
+        except ProcessLookupError:
+            pass
+
+    env = os.environ.copy()
+    settings, _ = load_dotenv(ENV_PATH)
+    env.update(settings)
+
+    subprocess.Popen(
+        ["python3", str(SCRIPT_DIR / "unifi-notify.py")],
+        env=env,
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        start_new_session=True,
+    )
+
+
+SETTINGS_FIELDS = [
+    ("UNIFI_LISTEN_HOST", "Listen Host", "text", "0.0.0.0"),
+    ("UNIFI_LISTEN_PORT", "Listen Port", "number", "9999"),
+    ("UNIFI_HOST", "UniFi Host", "text", "192.168.1.1"),
+    ("UNIFI_TOKEN", "Auth Token", "password", ""),
+    ("UNIFI_COOLDOWN", "Cooldown (seconds)", "number", "30"),
+    ("UNIFI_SNOOZE_MINS", "Snooze (minutes)", "number", "30"),
+    ("UNIFI_SOUND", "Sound File", "file", ""),
+    ("UNIFI_PIP_MUTED", "PIP Muted", "toggle", "0"),
+]
+
 
 Gst.init(None)
 Gtk.Settings.get_default().set_property("gtk-application-prefer-dark-theme", True)
@@ -162,6 +247,104 @@ class CameraStream:
             print(f"[stream] DEBUG: {debug}", flush=True)
 
 
+class SettingsView(Gtk.Box):
+    """Settings form that reads/writes the .env file."""
+
+    def __init__(self, on_save, on_cancel):
+        super().__init__(orientation=Gtk.Orientation.VERTICAL, spacing=0)
+        self._on_save_cb = on_save
+        self._on_cancel_cb = on_cancel
+        self._entries = {}  # env_key -> Gtk.Entry or Gtk.Switch
+
+        # Header
+        header = Gtk.Label(label="Settings")
+        header.add_css_class("title-2")
+        header.set_margin_top(12)
+        header.set_margin_bottom(8)
+        self.append(header)
+        self.append(Gtk.Separator())
+
+        # Scrollable form
+        form = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
+        form.set_margin_start(16)
+        form.set_margin_end(16)
+        form.set_margin_top(12)
+        form.set_margin_bottom(12)
+
+        for env_key, label_text, field_type, default in SETTINGS_FIELDS:
+            row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
+            label = Gtk.Label(label=label_text)
+            label.set_xalign(0)
+            label.set_size_request(160, -1)
+            row.append(label)
+
+            if field_type == "toggle":
+                widget = Gtk.Switch()
+                widget.set_halign(Gtk.Align.START)
+                widget.set_valign(Gtk.Align.CENTER)
+            else:
+                widget = Gtk.Entry()
+                widget.set_hexpand(True)
+                if field_type == "password":
+                    widget.set_visibility(False)
+                    widget.set_input_purpose(Gtk.InputPurpose.PASSWORD)
+                elif field_type == "number":
+                    widget.set_input_purpose(Gtk.InputPurpose.NUMBER)
+
+            row.append(widget)
+            self._entries[env_key] = widget
+            form.append(row)
+
+        scroll = Gtk.ScrolledWindow()
+        scroll.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+        scroll.set_vexpand(True)
+        scroll.set_child(form)
+        self.append(scroll)
+
+        # Bottom bar
+        self.append(Gtk.Separator())
+        btn_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        btn_box.set_halign(Gtk.Align.END)
+        btn_box.set_margin_top(8)
+        btn_box.set_margin_bottom(8)
+        btn_box.set_margin_end(16)
+
+        cancel_btn = Gtk.Button(label="Cancel")
+        cancel_btn.connect("clicked", lambda _: self._on_cancel_cb())
+        btn_box.append(cancel_btn)
+
+        save_btn = Gtk.Button(label="Save")
+        save_btn.add_css_class("suggested-action")
+        save_btn.connect("clicked", lambda _: self._do_save())
+        btn_box.append(save_btn)
+
+        self.append(btn_box)
+
+    def populate(self):
+        """Load current .env values into the form."""
+        settings, _ = load_dotenv(ENV_PATH)
+        for env_key, _, field_type, default in SETTINGS_FIELDS:
+            value = settings.get(env_key, default)
+            widget = self._entries[env_key]
+            if field_type == "toggle":
+                widget.set_active(value.lower() in ("1", "true", "yes"))
+            else:
+                widget.set_text(value)
+
+    def _do_save(self):
+        """Collect form values and write to .env."""
+        _, original_lines = load_dotenv(ENV_PATH)
+        new_settings = {}
+        for env_key, _, field_type, _ in SETTINGS_FIELDS:
+            widget = self._entries[env_key]
+            if field_type == "toggle":
+                new_settings[env_key] = "1" if widget.get_active() else "0"
+            else:
+                new_settings[env_key] = widget.get_text()
+        save_dotenv(ENV_PATH, new_settings, original_lines)
+        self._on_save_cb()
+
+
 class CamDashboard(Gtk.ApplicationWindow):
     def __init__(self, app, cameras):
         super().__init__(application=app, title="Camera Dashboard")
@@ -171,9 +354,15 @@ class CamDashboard(Gtk.ApplicationWindow):
         self.streams = {}  # mac -> CameraStream
         self.sliders = {}  # mac -> Gtk.Scale
 
+        # Stack for dashboard / settings views
+        self.stack = Gtk.Stack()
+        self.stack.set_transition_type(Gtk.StackTransitionType.SLIDE_LEFT_RIGHT)
+        self.stack.set_transition_duration(200)
+        self.set_child(self.stack)
+
         # Main vertical layout
         vbox = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
-        self.set_child(vbox)
+        self.stack.add_named(vbox, "dashboard")
 
         # --- Stream area (top, expandable) ---
         self.stream_area = Gtk.Box(
@@ -238,6 +427,37 @@ class CamDashboard(Gtk.ApplicationWindow):
         list_frame = Gtk.Frame()
         list_frame.set_child(scroll)
         vbox.append(list_frame)
+
+        # Gear button row
+        gear_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL)
+        gear_row.set_halign(Gtk.Align.END)
+        gear_row.set_margin_end(8)
+        gear_row.set_margin_top(4)
+        gear_row.set_margin_bottom(4)
+        gear_btn = Gtk.Button()
+        gear_btn.set_icon_name("emblem-system-symbolic")
+        gear_btn.add_css_class("flat")
+        gear_btn.connect("clicked", self._on_settings_clicked)
+        gear_row.append(gear_btn)
+        vbox.append(gear_row)
+
+        # Settings view
+        self.settings_view = SettingsView(
+            on_save=self._on_settings_save,
+            on_cancel=self._on_settings_cancel,
+        )
+        self.stack.add_named(self.settings_view, "settings")
+
+    def _on_settings_clicked(self, _button):
+        self.settings_view.populate()
+        self.stack.set_visible_child_name("settings")
+
+    def _on_settings_save(self):
+        _restart_notify()
+        self.stack.set_visible_child_name("dashboard")
+
+    def _on_settings_cancel(self):
+        self.stack.set_visible_child_name("dashboard")
 
     def _on_stream_toggle(self, check, mac):
         if check.get_active():
