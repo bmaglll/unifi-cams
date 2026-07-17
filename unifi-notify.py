@@ -194,7 +194,6 @@ class WebhookHandler(BaseHTTPRequestHandler):
                 "notify-send",
                 "-a", "UniFi Protect",
                 "-i", os.path.join(_SCRIPT_DIR, "assets", "UI.svg"),
-                "-t", "10000",
             ]
             cmd += ["--wait", "-A", f"snooze=Snooze {SNOOZE_MINS}m"]
             if stream_url:

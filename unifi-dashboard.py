@@ -17,7 +17,7 @@ import gi
 gi.require_version("Gtk", "4.0")
 gi.require_version("Gdk", "4.0")
 gi.require_version("Gst", "1.0")
-from gi.repository import Gtk, Gdk, Gst, GLib
+from gi.repository import Gtk, Gdk, Gst, GLib, Gio
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 ENV_PATH = SCRIPT_DIR / ".env"
@@ -127,6 +127,7 @@ class CameraStream:
     def __init__(self, stream_url):
         self.stream_url = stream_url
         self.ffmpeg_proc = None
+        self._reconnect_id = None
 
         # Build pipeline: fdsrc → decodebin → videoconvert → gtk4paintablesink
         #                                   → audioconvert → volume → autoaudiosink
@@ -198,7 +199,15 @@ class CameraStream:
             element.set_property("max-size-bytes", 0)
 
     def play(self):
-        # Launch ffmpeg: reads RTSPS, outputs mpegts to stdout (no re-encode)
+        bus = self.pipeline.get_bus()
+        bus.add_signal_watch()
+        bus.connect("message::error", self._on_bus_error)
+        bus.connect("message::eos", self._on_bus_eos)
+        bus.connect("message::async-done", self._on_async_done)
+        self._start_pipeline()
+
+    def _start_pipeline(self):
+        """(Re)start ffmpeg and set the GStreamer pipeline to PLAYING."""
         self.ffmpeg_proc = subprocess.Popen(
             [
                 "ffmpeg", "-loglevel", "error",
@@ -219,15 +228,12 @@ class CameraStream:
             stderr=subprocess.DEVNULL,
         )
         self.fdsrc.set_property("fd", self.ffmpeg_proc.stdout.fileno())
-
-        bus = self.pipeline.get_bus()
-        bus.add_signal_watch()
-        bus.connect("message::error", self._on_bus_error)
-        bus.connect("message::async-done", self._on_async_done)
-
         self.pipeline.set_state(Gst.State.PLAYING)
 
     def stop(self):
+        if self._reconnect_id is not None:
+            GLib.source_remove(self._reconnect_id)
+            self._reconnect_id = None
         self.pipeline.set_state(Gst.State.NULL)
         if self.ffmpeg_proc:
             self.ffmpeg_proc.kill()
@@ -239,12 +245,191 @@ class CameraStream:
         if self.loading_label:
             self.loading_label.set_visible(False)
 
-    @staticmethod
-    def _on_bus_error(bus, msg):
+    def _on_bus_eos(self, bus, msg):
+        print("[stream] EOS — stream ended, reconnecting...", flush=True)
+        self._schedule_reconnect()
+
+    def _on_bus_error(self, bus, msg):
         err, debug = msg.parse_error()
         print(f"[stream] ERROR: {err.message}", flush=True)
         if debug:
             print(f"[stream] DEBUG: {debug}", flush=True)
+        self._schedule_reconnect()
+
+    def _schedule_reconnect(self):
+        if self._reconnect_id is None:
+            self._reconnect_id = GLib.timeout_add_seconds(2, self._do_reconnect)
+
+    def _do_reconnect(self):
+        self._reconnect_id = None
+        self.restart()
+        return GLib.SOURCE_REMOVE
+
+    def restart(self):
+        """Tear down and restart the pipeline (e.g. after suspend/resume)."""
+        if self.ffmpeg_proc:
+            self.ffmpeg_proc.kill()
+            self.ffmpeg_proc.wait()
+            self.ffmpeg_proc = None
+        self.pipeline.set_state(Gst.State.NULL)
+        if self.loading_label:
+            self.loading_label.set_visible(True)
+        self._start_pipeline()
+
+
+_SNI_XML = """
+<node>
+  <interface name="org.kde.StatusNotifierItem">
+    <method name="Activate">
+      <arg type="i" name="x" direction="in"/>
+      <arg type="i" name="y" direction="in"/>
+    </method>
+    <method name="SecondaryActivate">
+      <arg type="i" name="x" direction="in"/>
+      <arg type="i" name="y" direction="in"/>
+    </method>
+    <method name="Scroll">
+      <arg type="i" name="delta" direction="in"/>
+      <arg type="s" name="orientation" direction="in"/>
+    </method>
+    <property name="Id" type="s" access="read"/>
+    <property name="Category" type="s" access="read"/>
+    <property name="Status" type="s" access="read"/>
+    <property name="Title" type="s" access="read"/>
+    <property name="IconName" type="s" access="read"/>
+    <property name="IconThemePath" type="s" access="read"/>
+    <property name="Menu" type="o" access="read"/>
+    <property name="ItemIsMenu" type="b" access="read"/>
+    <property name="AttentionIconName" type="s" access="read"/>
+    <property name="ToolTip" type="(sa(iiay)ss)" access="read"/>
+    <signal name="NewStatus"><arg type="s" name="status"/></signal>
+    <signal name="NewIcon"/>
+    <signal name="NewTitle"/>
+  </interface>
+</node>
+"""
+
+
+class SystemTrayIcon:
+    """StatusNotifierItem tray icon via GIO D-Bus (no extra dependencies).
+
+    Registers the org.kde.StatusNotifierItem D-Bus interface and notifies
+    the StatusNotifierWatcher (e.g. waybar tray) of its presence.
+    Falls back gracefully if no watcher is running.
+    """
+
+    def __init__(self, on_activate):
+        self._on_activate = on_activate
+        self._status = "Passive"
+        self._conn = None
+        self._reg_id = None
+        self._service_name = f"org.kde.StatusNotifierItem-{os.getpid()}-1"
+        self.available = False
+
+        # Set up a minimal freedesktop icon theme so the tray can load the SVG
+        self._icon_name = "unifi-cams"
+        self._icon_theme_path = "/tmp/unifi-cams-icons"
+        icon_dir = Path(self._icon_theme_path) / "hicolor" / "scalable" / "apps"
+        icon_dir.mkdir(parents=True, exist_ok=True)
+        icon_link = icon_dir / "unifi-cams.svg"
+        src = SCRIPT_DIR / "assets" / "UI.svg"
+        if not icon_link.exists() and src.exists():
+            icon_link.symlink_to(src)
+
+        try:
+            self._conn = Gio.bus_get_sync(Gio.BusType.SESSION, None)
+        except Exception as e:
+            print(f"[tray] D-Bus session bus unavailable: {e}", flush=True)
+            return
+
+        # Own a well-known bus name
+        self._conn.call_sync(
+            "org.freedesktop.DBus", "/org/freedesktop/DBus",
+            "org.freedesktop.DBus", "RequestName",
+            GLib.Variant("(su)", (self._service_name, 0)),
+            GLib.VariantType("(u)"),
+            Gio.DBusCallFlags.NONE, -1, None,
+        )
+
+        # Register the StatusNotifierItem object
+        node_info = Gio.DBusNodeInfo.new_for_xml(_SNI_XML)
+        iface_info = node_info.lookup_interface("org.kde.StatusNotifierItem")
+        self._reg_id = self._conn.register_object(
+            "/StatusNotifierItem",
+            iface_info,
+            self._handle_method_call,
+            self._handle_get_property,
+            None,
+        )
+
+        # Register with the watcher (may not be running)
+        try:
+            self._conn.call_sync(
+                "org.kde.StatusNotifierWatcher", "/StatusNotifierWatcher",
+                "org.kde.StatusNotifierWatcher", "RegisterStatusNotifierItem",
+                GLib.Variant("(s)", (self._service_name,)),
+                None, Gio.DBusCallFlags.NONE, 1000, None,
+            )
+            self.available = True
+            print("[tray] Registered with StatusNotifierWatcher", flush=True)
+        except Exception as e:
+            print(f"[tray] No StatusNotifierWatcher ({e}) — minimize will iconify instead", flush=True)
+
+    def _handle_method_call(self, conn, sender, path, iface, method, params, invocation):
+        if method == "Activate":
+            GLib.idle_add(self._on_activate)
+            invocation.return_value(None)
+        elif method in ("SecondaryActivate", "Scroll"):
+            invocation.return_value(None)
+        else:
+            invocation.return_dbus_error(
+                "org.freedesktop.DBus.Error.UnknownMethod", method
+            )
+
+    def _handle_get_property(self, conn, sender, path, iface, prop):
+        return {
+            "Id":              GLib.Variant("s", "unifi-cams"),
+            "Category":        GLib.Variant("s", "ApplicationStatus"),
+            "Status":          GLib.Variant("s", self._status),
+            "Title":           GLib.Variant("s", "Camera Dashboard"),
+            "IconName":        GLib.Variant("s", self._icon_name),
+            "IconThemePath":   GLib.Variant("s", self._icon_theme_path),
+            "Menu":            GLib.Variant("o", "/"),
+            "ItemIsMenu":      GLib.Variant("b", False),
+            "AttentionIconName": GLib.Variant("s", ""),
+            "ToolTip":         GLib.Variant("(sa(iiay)ss)", ("", [], "Camera Dashboard", "")),
+        }.get(prop)
+
+    def _emit_new_status(self, status):
+        if self._conn and self._reg_id:
+            self._conn.emit_signal(
+                None, "/StatusNotifierItem",
+                "org.kde.StatusNotifierItem", "NewStatus",
+                GLib.Variant("(s)", (status,)),
+            )
+
+    def show(self):
+        self._status = "Active"
+        self._emit_new_status("Active")
+
+    def hide(self):
+        self._status = "Passive"
+        self._emit_new_status("Passive")
+
+    def unregister(self):
+        if self._reg_id and self._conn:
+            self._conn.unregister_object(self._reg_id)
+            self._reg_id = None
+        if self._conn:
+            try:
+                self._conn.call_sync(
+                    "org.freedesktop.DBus", "/org/freedesktop/DBus",
+                    "org.freedesktop.DBus", "ReleaseName",
+                    GLib.Variant("(s)", (self._service_name,)),
+                    None, Gio.DBusCallFlags.NONE, -1, None,
+                )
+            except Exception:
+                pass
 
 
 class SettingsView(Gtk.Box):
@@ -353,6 +538,7 @@ class CamDashboard(Gtk.ApplicationWindow):
         self.cameras = cameras  # {mac: {"name": ..., "stream": ...}}
         self.streams = {}  # mac -> CameraStream
         self.sliders = {}  # mac -> Gtk.Scale
+        self.tray = SystemTrayIcon(on_activate=self._show_window)
 
         # Stack for dashboard / settings views
         self.stack = Gtk.Stack()
@@ -439,6 +625,19 @@ class CamDashboard(Gtk.ApplicationWindow):
         gear_btn.add_css_class("flat")
         gear_btn.connect("clicked", self._on_settings_clicked)
         gear_row.append(gear_btn)
+
+        min_btn = Gtk.Button()
+        min_btn.set_icon_name("window-minimize-symbolic")
+        min_btn.add_css_class("flat")
+        min_btn.connect("clicked", self._on_minimize_clicked)
+        gear_row.append(min_btn)
+
+        close_btn = Gtk.Button()
+        close_btn.set_icon_name("window-close-symbolic")
+        close_btn.add_css_class("flat")
+        close_btn.connect("clicked", lambda _: self.get_application().quit())
+        gear_row.append(close_btn)
+
         vbox.append(gear_row)
 
         # Settings view
@@ -447,6 +646,18 @@ class CamDashboard(Gtk.ApplicationWindow):
             on_cancel=self._on_settings_cancel,
         )
         self.stack.add_named(self.settings_view, "settings")
+
+    def _show_window(self):
+        self.set_visible(True)
+        self.present()
+        self.tray.hide()
+
+    def _on_minimize_clicked(self, _):
+        if self.tray.available:
+            self.set_visible(False)
+            self.tray.show()
+        else:
+            self.iconify()
 
     def _on_settings_clicked(self, _button):
         self.settings_view.populate()
@@ -500,6 +711,7 @@ class CamDashboard(Gtk.ApplicationWindow):
         for stream in self.streams.values():
             stream.stop()
         self.streams.clear()
+        self.tray.unregister()
         return False  # allow close to proceed
 
 
@@ -507,10 +719,43 @@ class CamDashboardApp(Gtk.Application):
     def __init__(self, cameras):
         super().__init__(application_id="com.local.unifi-cams")
         self.cameras = cameras
+        self._sleep_sub = None
 
     def do_activate(self):
         win = CamDashboard(self, self.cameras)
         win.present()
+        self._subscribe_sleep()
+
+    def _subscribe_sleep(self):
+        """Listen for system suspend/resume via logind PrepareForSleep."""
+        try:
+            conn = Gio.bus_get_sync(Gio.BusType.SYSTEM, None)
+            self._sleep_sub = conn.signal_subscribe(
+                "org.freedesktop.login1",
+                "org.freedesktop.login1.Manager",
+                "PrepareForSleep",
+                "/org/freedesktop/login1",
+                None,
+                Gio.DBusSignalFlags.NONE,
+                self._on_prepare_for_sleep,
+            )
+            print("[dashboard] Subscribed to sleep/wake signals", flush=True)
+        except Exception as e:
+            print(f"[dashboard] Could not subscribe to sleep signals: {e}", flush=True)
+
+    def _on_prepare_for_sleep(self, conn, sender, path, iface, signal, params):
+        going_to_sleep = params.unpack()[0]
+        if not going_to_sleep:
+            print("[dashboard] System resumed — restarting streams", flush=True)
+            GLib.idle_add(self._restart_all_streams)
+
+    def _restart_all_streams(self):
+        win = self.get_active_window()
+        if not win:
+            return
+        for stream in win.streams.values():
+            stream.restart()
+        print(f"[dashboard] Restarted {len(win.streams)} stream(s)", flush=True)
 
 
 def main():
